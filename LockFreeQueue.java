@@ -1,4 +1,4 @@
-public interface LockFreeQueue {
+public interface LockFreeQueue<T> {
 
     public boolean add(T item);
 
