@@ -4,9 +4,13 @@ import sun.misc.Unsafe;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class RingBufferQueue<T> implements LockFreeQueue<T> {
+/**
+ * Support multiple producer & multiple consumer with direct memory access (no GC involved)
+ * @param <T>
+ */
+public class UnsafeMPMCRingBufferQueue<T> implements LockFreeQueue<T> {
 
-    private int mask;
+    private int slotMask;
 
     private Object[] arrayData;
 
@@ -27,8 +31,8 @@ public class RingBufferQueue<T> implements LockFreeQueue<T> {
     static {
         try {
             Unsafe unsafe = UnsafeUtil.getUnsafe();
-            START_OFFSET = unsafe.objectFieldOffset(RingBufferQueue.class.getDeclaredField("start"));
-            END_OFFSET = unsafe.objectFieldOffset(RingBufferQueue.class.getDeclaredField("end"));
+            START_OFFSET = unsafe.objectFieldOffset(UnsafeMPMCRingBufferQueue.class.getDeclaredField("start"));
+            END_OFFSET = unsafe.objectFieldOffset(UnsafeMPMCRingBufferQueue.class.getDeclaredField("end"));
             ARRAY_OFFSET = unsafe.arrayBaseOffset(Object[].class);
             ARRAY_INDEX_SCALE = unsafe.arrayIndexScale(Object[].class);
         } catch (NoSuchFieldException | NullPointerException e) {
@@ -36,13 +40,13 @@ public class RingBufferQueue<T> implements LockFreeQueue<T> {
         }
     }
 
-    public RingBufferQueue(int queueSize) {
+    public UnsafeMPMCRingBufferQueue(int queueSize) {
         if (!isPowerOf2(queueSize)) {
             throw new IllegalArgumentException("Maximum size must be power of 2");
         }
         arrayData = new Object[queueSize];
         start = end = 0;
-        mask = queueSize - 1;
+        slotMask = queueSize - 1;
     }
 
     private boolean isPowerOf2(int queueSize) {
@@ -55,11 +59,11 @@ public class RingBufferQueue<T> implements LockFreeQueue<T> {
             /*waiting*/
         }
         try {
-            int nextEnd = (end + ARRAY_INDEX_SCALE) & mask; // circular increment
+            int nextEnd = (end + ARRAY_INDEX_SCALE) & slotMask; // circular increment
             if (nextEnd == start) {
                 return false; // queue is full
             }
-            UnsafeUtil.getUnsafe().putObject(arrayData, ARRAY_OFFSET +end, item);
+            UnsafeUtil.getUnsafe().putObject(arrayData, ARRAY_OFFSET + end, item);
             UnsafeUtil.getUnsafe().putOrderedInt(this, END_OFFSET, nextEnd);
         } finally {
             lock.set(false);
@@ -76,7 +80,7 @@ public class RingBufferQueue<T> implements LockFreeQueue<T> {
             if (isEmpty()) return null;
             @SuppressWarnings("unchecked")
             T result = (T) UnsafeUtil.getUnsafe().getObject(arrayData, ARRAY_OFFSET + start);
-            UnsafeUtil.getUnsafe().putOrderedInt(this, START_OFFSET, start + ARRAY_INDEX_SCALE);
+            UnsafeUtil.getUnsafe().putOrderedInt(this, START_OFFSET, (start + ARRAY_INDEX_SCALE) & slotMask);
             return result;
         } finally {
             lock.set(false);

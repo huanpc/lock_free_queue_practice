@@ -10,6 +10,8 @@ import java.util.logging.Logger;
  * Created by nauh94@gmail.com on 2019-04-20
  */
 public class UnsafeUtil {
+    static class MyStructure {}
+
     private static final  Logger logger = Logger.getLogger(UnsafeUtil.class.getName());
 
     public static Unsafe getUnsafe() {
@@ -30,7 +32,7 @@ public class UnsafeUtil {
 
     public static long normalize(int value) {
         if(value >= 0) return value;
-        return (~0L >>> 32) & value;
+        return (~0L >>> 64) & value;
     }
 
     public static void main(String[] args) {
